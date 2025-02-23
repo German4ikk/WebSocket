@@ -26,11 +26,27 @@ viewers = {}
 # Словарь {user_id: partner_id} для пар в рулетке
 roulette_pairs = {}
 
+async def keep_alive(websocket):
+    """
+    Функция для поддержания активности WebSocket, отправляя периодические пинги.
+    """
+    try:
+        while True:
+            await asyncio.sleep(30)  # Пинг каждые 30 секунд
+            if websocket.open:
+                await websocket.send(json.dumps({'type': 'ping'}))
+                logger.debug(f"Отправлен ping для {websocket}")
+            else:
+                break
+    except Exception as e:
+        logger.error(f"Ошибка в keep_alive: {e}")
+
 async def handler(websocket, path):
     """
     Основной обработчик входящих сообщений WebSocket.
     """
     user_id = None
+    ping_task = None
     try:
         async for message in websocket:
             data = json.loads(message)
@@ -46,6 +62,8 @@ async def handler(websocket, path):
                 mode = data.get('mode', 'viewer')
                 logger.info(f"[REGISTER] user_id={user_id}, mode={mode}")
                 await websocket.send(json.dumps({'type': 'connected', 'mode': mode}))
+                # Запускаем задачу для поддержания активности
+                ping_task = asyncio.create_task(keep_alive(websocket))
 
             # --- СТАРТ ЭФИРА ---
             elif msg_type == 'start_stream':
@@ -166,11 +184,18 @@ async def handler(websocket, path):
                     partner_id = roulette_pairs[from_id]
                     await clients[partner_id].send(json.dumps({'type': 'gift', 'user_id': from_id, 'amount': amount}))
 
+            # --- PING ---
+            elif msg_type == 'ping':
+                logger.debug(f"Получен ping от {user_id}")
+                await websocket.send(json.dumps({'type': 'pong'}))
+
     except websockets.ConnectionClosed as e:
         logger.warning(f"Соединение закрыто: {e}")
     except Exception as e:
         logger.error(f"Ошибка в обработчике: {e}", exc_info=True)
     finally:
+        if user_id and ping_task:
+            ping_task.cancel()
         if user_id:
             if user_id in clients:
                 del clients[user_id]
