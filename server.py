@@ -126,6 +126,7 @@ async def handler(websocket, path):
                     await clients[user_id].send(json.dumps({'type': 'partner', 'partner_id': partner_id}))
                     await clients[partner_id].send(json.dumps({'type': 'partner', 'partner_id': user_id}))
                     # Отправляем offer для инициализации WebRTC
+                    logger.debug(f"Отправка offer от {user_id} к {partner_id}")
                     await clients[user_id].send(json.dumps({'type': 'offer', 'offer': offer, 'from': partner_id}))
                 else:
                     roulette_queue.append(user_id)
@@ -133,6 +134,7 @@ async def handler(websocket, path):
             # --- WEBRTC (OFFER/ANSWER/CANDIDATE) ---
             elif msg_type in ['offer', 'answer', 'candidate']:
                 to_id = data.get('to')
+                logger.debug(f"WebRTC {msg_type} от {user_id} к {to_id}")
                 if to_id in clients:
                     target_ws = clients[to_id]
                     logger.info(f"[{msg_type.upper()}] from={user_id} to={to_id}")
