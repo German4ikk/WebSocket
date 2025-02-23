@@ -194,7 +194,7 @@ async def handler(websocket, path):
 
 # Считываем порт из переменной окружения PORT (Railway, Render и т.д.)
 import os
-port = int(os.environ.get("PORT", 5000))
+port = int(os.environ.get("PORT", 8080))  # 8080 — дефолт
 
 import websockets
 
