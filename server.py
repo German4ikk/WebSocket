@@ -23,6 +23,9 @@ roulette_queue = []
 # Словарь {streamer_id: [viewer_ids]} — зрители эфира
 viewers = {}
 
+# Словарь {user_id: partner_id} для пар в рулетке
+roulette_pairs = {}
+
 async def handler(websocket, path):
     """
     Основной обработчик входящих сообщений WebSocket.
@@ -95,10 +98,13 @@ async def handler(websocket, path):
                 user_id = data['user_id']
                 offer = data.get('offer', {})  # Получаем offer от клиента
                 logger.info(f"[JOIN_ROULETTE] user_id={user_id} with offer: {offer}")
-                if user_id in roulette_queue:
-                    continue
+                if user_id in roulette_pairs:
+                    continue  # Пользователь уже в паре
                 if roulette_queue:
                     partner_id = roulette_queue.pop(0)
+                    roulette_pairs[user_id] = partner_id
+                    roulette_pairs[partner_id] = user_id
+                    logger.debug(f"Создана пара: {user_id} <-> {partner_id}")
                     await clients[user_id].send(json.dumps({'type': 'partner', 'partner_id': partner_id}))
                     await clients[partner_id].send(json.dumps({'type': 'partner', 'partner_id': user_id}))
                     # Отправляем offer для инициализации WebRTC
@@ -117,6 +123,10 @@ async def handler(websocket, path):
                     target_ws = active_streams[to_id]
                     logger.info(f"[{msg_type.upper()}] from={user_id} to_streamer={to_id}")
                     await target_ws.send(json.dumps(data))
+                elif to_id in roulette_pairs:
+                    target_ws = clients[roulette_pairs[to_id]]  # Отправляем партнёру в рулетке
+                    logger.info(f"[{msg_type.upper()}] from={user_id} to_partner={to_id} via {roulette_pairs[to_id]}")
+                    await target_ws.send(json.dumps(data))
                 else:
                     logger.error(f"Получатель {to_id} не найден для {msg_type}")
 
@@ -134,6 +144,10 @@ async def handler(websocket, path):
                             if v_id in clients and v_id != from_id:
                                 logger.debug(f"Отправка сообщения зрителю {v_id}")
                                 await clients[v_id].send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text, 'to': to}))
+                elif to and to in roulette_pairs:
+                    partner_id = roulette_pairs[from_id]
+                    logger.debug(f"Отправка сообщения в рулетке от {from_id} к {partner_id}")
+                    await clients[partner_id].send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text, 'to': partner_id}))
                 else:
                     logger.debug("Отправка общего сообщения всем клиентам")
                     for uid, client_ws in clients.items():
@@ -148,6 +162,9 @@ async def handler(websocket, path):
                 logger.info(f"[GIFT] from={from_id} to={to_id} amount={amount}")
                 if to_id in active_streams:
                     await active_streams[to_id].send(json.dumps({'type': 'gift', 'user_id': from_id, 'amount': amount}))
+                elif to_id in roulette_pairs:
+                    partner_id = roulette_pairs[from_id]
+                    await clients[partner_id].send(json.dumps({'type': 'gift', 'user_id': from_id, 'amount': amount}))
 
     except websockets.ConnectionClosed as e:
         logger.warning(f"Соединение закрыто: {e}")
@@ -161,6 +178,10 @@ async def handler(websocket, path):
                 del active_streams[user_id]
             if user_id in roulette_queue:
                 roulette_queue.remove(user_id)
+            if user_id in roulette_pairs:
+                partner_id = roulette_pairs[user_id]
+                del roulette_pairs[partner_id]
+                del roulette_pairs[user_id]
             for sid, v_list in list(viewers.items()):
                 if user_id in v_list:
                     v_list.remove(user_id)
