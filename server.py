@@ -76,7 +76,8 @@ async def handler(websocket, path):
             elif msg_type == 'join_stream':
                 user_id = data['user_id']
                 streamer_id = data['streamer_id']
-                logger.info(f"[JOIN_STREAM] user_id={user_id} -> streamer_id={streamer_id}")
+                offer = data.get('offer', {})  # Получаем offer от клиента
+                logger.info(f"[JOIN_STREAM] user_id={user_id} -> streamer_id={streamer_id} with offer: {offer}")
                 if streamer_id not in active_streams:
                     await websocket.send(json.dumps({'type': 'error', 'message': 'Эфир не найден'}))
                     continue
@@ -84,23 +85,24 @@ async def handler(websocket, path):
                     viewers[streamer_id] = []
                 if user_id not in viewers[streamer_id]:
                     viewers[streamer_id].append(user_id)
-                    logger.debug(f"Отправка пустого offer зрителю {user_id} от стримера {streamer_id}")
-                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': {}, 'from': streamer_id}))
+                    logger.debug(f"Отправка offer зрителю {user_id} от стримера {streamer_id}")
+                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': offer, 'from': streamer_id}))
                     logger.debug(f"Уведомление стримера {streamer_id} о зрителе {user_id}")
                     await active_streams[streamer_id].send(json.dumps({'type': 'viewer_joined', 'viewer_id': user_id}))
 
             # --- ВИДЕО-РУЛЕТКА ---
             elif msg_type == 'join_roulette':
                 user_id = data['user_id']
-                logger.info(f"[JOIN_ROULETTE] user_id={user_id}")
+                offer = data.get('offer', {})  # Получаем offer от клиента
+                logger.info(f"[JOIN_ROULETTE] user_id={user_id} with offer: {offer}")
                 if user_id in roulette_queue:
                     continue
                 if roulette_queue:
                     partner_id = roulette_queue.pop(0)
                     await clients[user_id].send(json.dumps({'type': 'partner', 'partner_id': partner_id}))
                     await clients[partner_id].send(json.dumps({'type': 'partner', 'partner_id': user_id}))
-                    # Отправляем пустой offer для инициализации WebRTC
-                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': {}, 'from': partner_id}))
+                    # Отправляем offer для инициализации WebRTC
+                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': offer, 'from': partner_id}))
                 else:
                     roulette_queue.append(user_id)
 
