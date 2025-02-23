@@ -1,0 +1,6 @@
+[build]
+  builder = "paketobuildpacks/builder:base"
+  buildpacks = ["paketo-buildpacks/python"]
+
+[env]
+  PYTHON_VERSION = "3.10"
