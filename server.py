@@ -3,6 +3,9 @@ import asyncio
 import websockets
 import json
 
+# Определяем порт для сервера (по умолчанию 8080)
+PORT = int(os.getenv("PORT", 8080))
+
 # Словарь {user_id: websocket} — все активные клиенты
 clients = {}
 
@@ -32,7 +35,6 @@ async def handler(websocket, path):
                 clients[user_id] = websocket
                 mode = data.get('mode', 'viewer')
                 print(f"[register] user_id={user_id}, mode={mode}")
-                # Отправим обратно подтверждение
                 await websocket.send(json.dumps({'type': 'connected', 'mode': mode}))
 
             # --- СТАРТ ЭФИРА ---
@@ -41,13 +43,11 @@ async def handler(websocket, path):
                 active_streams[user_id] = websocket
                 stream_mode = data.get('mode', 'stream')
                 print(f"[start_stream] user_id={user_id}, mode={stream_mode}")
-                # Подтверждаем стримеру
                 await websocket.send(json.dumps({
                     'type': 'stream_started',
                     'user_id': user_id,
                     'mode': stream_mode
                 }))
-                # Уведомляем всех остальных о новом эфире
                 for uid, client_ws in clients.items():
                     if uid != user_id:
                         await client_ws.send(json.dumps({
@@ -58,7 +58,6 @@ async def handler(websocket, path):
 
             # --- ПОЛУЧИТЬ СПИСОК ЭФИРОВ (для зрителя) ---
             elif msg_type == 'get_streams':
-                # Возвращаем список ключей из active_streams
                 streams = list(active_streams.keys())
                 print(f"[get_streams] user_id={data['user_id']} -> {streams}")
                 await websocket.send(json.dumps({
@@ -72,11 +71,9 @@ async def handler(websocket, path):
                 streamer_id = data['streamer_id']
                 print(f"[join_stream] user_id={user_id} -> streamer_id={streamer_id}")
                 if streamer_id in active_streams:
-                    # Добавляем зрителя
                     if streamer_id not in viewers:
                         viewers[streamer_id] = []
                     viewers[streamer_id].append(user_id)
-                    # Посылаем зрителю "offer" (заглушка) и уведомляем стримера
                     await clients[user_id].send(json.dumps({
                         'type': 'offer',
                         'offer': {},
@@ -87,7 +84,6 @@ async def handler(websocket, path):
                         'viewer_id': user_id
                     }))
                 else:
-                    # Нет такого эфира
                     await websocket.send(json.dumps({
                         'type': 'error',
                         'message': 'Эфир не найден'
@@ -99,7 +95,6 @@ async def handler(websocket, path):
                 print(f"[join_roulette] user_id={user_id}")
                 if roulette_queue and roulette_queue[0] != user_id:
                     partner_id = roulette_queue.pop(0)
-                    # Отправляем обоим сообщение "partner"
                     await clients[user_id].send(json.dumps({
                         'type': 'partner',
                         'partner_id': partner_id
@@ -109,7 +104,6 @@ async def handler(websocket, path):
                         'partner_id': user_id
                     }))
                 else:
-                    # Добавляем в очередь, если ещё нет
                     if user_id not in roulette_queue:
                         roulette_queue.append(user_id)
 
@@ -124,24 +118,19 @@ async def handler(websocket, path):
                     target_ws = active_streams[to_id]
                     print(f"[{msg_type}] from={user_id} to_streamer={to_id}")
                     await target_ws.send(json.dumps(data))
-                else:
-                    print(f"[{msg_type}] to={to_id} not found")
 
             # --- ЧАТ (общий или к стримеру) ---
             elif msg_type == 'chat_message':
                 from_id = data['user_id']
                 message_text = data['message']
-                to = data.get('to')  # если указано
+                to = data.get('to')
                 print(f"[chat_message] from={from_id}, to={to}, msg={message_text}")
-
                 if to and to in active_streams:
-                    # Отправляем сообщение стримеру
                     await active_streams[to].send(json.dumps({
                         'type': 'chat_message',
                         'user_id': from_id,
                         'message': message_text
                     }))
-                    # И всем зрителям
                     if to in viewers:
                         for v_id in viewers[to]:
                             if v_id in clients and v_id != from_id:
@@ -151,7 +140,6 @@ async def handler(websocket, path):
                                     'message': message_text
                                 }))
                 else:
-                    # Широковещательное сообщение (всем, кроме отправителя)
                     for uid, client_ws in clients.items():
                         if uid != from_id:
                             await client_ws.send(json.dumps({
@@ -172,14 +160,10 @@ async def handler(websocket, path):
                         'user_id': from_id,
                         'amount': amount
                     }))
-                else:
-                    # если хотим отсылать всем?
-                    pass
 
     except Exception as e:
         print(f"Error in handler: {e}")
     finally:
-        # Отключение пользователя
         if user_id in clients:
             del clients[user_id]
         if user_id in active_streams:
@@ -192,16 +176,10 @@ async def handler(websocket, path):
                 if not v_list:
                     del viewers[sid]
 
-# Считываем порт из переменной окружения PORT (Railway, Render и т.д.)
-import os
-port = int(os.environ.get("PORT", 8080))  # 8080 — дефолт
-
-import websockets
-
 async def main():
-    async with websockets.serve(handler, "0.0.0.0", port):
-        print(f"Server started on port {port}")
-        await asyncio.Future()  # бесконечно ждём
+    async with websockets.serve(handler, "0.0.0.0", PORT):
+        print(f"✅ WebSocket сервер запущен на порту {PORT}")
+        await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())
