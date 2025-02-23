@@ -3,6 +3,11 @@ app = "websocket1"
 [build]
   dockerfile = "Dockerfile"
 
+  [build]
+  builder = "paketobuildpacks/builder:base"
+  buildpacks = ["paketo-buildpacks/python"]
+  environment = { BP_CPYTHON_VERSION = "3.10" }
+
 [env]
   PORT = "5000"
 
