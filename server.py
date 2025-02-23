@@ -8,8 +8,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Определяем порт для сервера (по умолчанию 8080)
-PORT = int(os.getenv("PORT", 8080))
+# Определяем порт для сервера (по умолчанию 5000, совпадает с fly.toml)
+PORT = int(os.getenv("PORT", 5000))
 
 # Словарь {user_id: websocket} — все активные клиенты
 clients = {}
