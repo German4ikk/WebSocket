@@ -1,9 +1,6 @@
 app = "websocket1"
 
 [build]
-  dockerfile = "Dockerfile"
-
-  [build]
   builder = "paketobuildpacks/builder:base"
   buildpacks = ["paketo-buildpacks/python"]
   environment = { BP_CPYTHON_VERSION = "3.10" }
@@ -17,6 +14,6 @@ app = "websocket1"
   processes = ["app"]
 
   [[services.ports]]
-    handlers = ["http"]
     port = 80
+    handlers = ["http"]
     force_https = true
