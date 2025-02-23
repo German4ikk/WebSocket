@@ -84,7 +84,9 @@ async def handler(websocket, path):
                     viewers[streamer_id] = []
                 if user_id not in viewers[streamer_id]:
                     viewers[streamer_id].append(user_id)
+                    logger.debug(f"Отправка пустого offer зрителю {user_id} от стримера {streamer_id}")
                     await clients[user_id].send(json.dumps({'type': 'offer', 'offer': {}, 'from': streamer_id}))
+                    logger.debug(f"Уведомление стримера {streamer_id} о зрителе {user_id}")
                     await active_streams[streamer_id].send(json.dumps({'type': 'viewer_joined', 'viewer_id': user_id}))
 
             # --- ВИДЕО-РУЛЕТКА ---
@@ -97,10 +99,12 @@ async def handler(websocket, path):
                     partner_id = roulette_queue.pop(0)
                     await clients[user_id].send(json.dumps({'type': 'partner', 'partner_id': partner_id}))
                     await clients[partner_id].send(json.dumps({'type': 'partner', 'partner_id': user_id}))
+                    # Отправляем пустой offer для инициализации WebRTC
+                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': {}, 'from': partner_id}))
                 else:
                     roulette_queue.append(user_id)
 
-            # --- ICE/SDP (WebRTC) ---
+            # --- WEBRTC (OFFER/ANSWER/CANDIDATE) ---
             elif msg_type in ['offer', 'answer', 'candidate']:
                 to_id = data.get('to')
                 if to_id in clients:
@@ -112,7 +116,7 @@ async def handler(websocket, path):
                     logger.info(f"[{msg_type.upper()}] from={user_id} to_streamer={to_id}")
                     await target_ws.send(json.dumps(data))
                 else:
-                    logger.error(f"Получатель {to_id} не найден")
+                    logger.error(f"Получатель {to_id} не найден для {msg_type}")
 
             # --- ЧАТ ---
             elif msg_type == 'chat_message':
@@ -121,12 +125,15 @@ async def handler(websocket, path):
                 to = data.get('to')
                 logger.info(f"[CHAT] from={from_id}, to={to}, msg={message_text}")
                 if to and to in active_streams:
-                    await active_streams[to].send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text}))
+                    logger.debug(f"Отправка сообщения стримеру {to}")
+                    await active_streams[to].send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text, 'to': to}))
                     if to in viewers:
                         for v_id in viewers[to]:
                             if v_id in clients and v_id != from_id:
-                                await clients[v_id].send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text}))
+                                logger.debug(f"Отправка сообщения зрителю {v_id}")
+                                await clients[v_id].send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text, 'to': to}))
                 else:
+                    logger.debug("Отправка общего сообщения всем клиентам")
                     for uid, client_ws in clients.items():
                         if uid != from_id:
                             await client_ws.send(json.dumps({'type': 'chat_message', 'user_id': from_id, 'message': message_text}))
