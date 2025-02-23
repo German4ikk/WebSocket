@@ -32,7 +32,7 @@ async def keep_alive(websocket):
     """
     try:
         while True:
-            await asyncio.sleep(30)  # Пинг каждые 30 секунд
+            await asyncio.sleep(20)  # Пинг каждые 20 секунд (синхронизировано с клиентом)
             if websocket.open:
                 await websocket.send(json.dumps({'type': 'ping'}))
                 logger.debug(f"Отправлен ping для {websocket}")
@@ -184,10 +184,12 @@ async def handler(websocket, path):
                     partner_id = roulette_pairs[from_id]
                     await clients[partner_id].send(json.dumps({'type': 'gift', 'user_id': from_id, 'amount': amount}))
 
-            # --- PING ---
+            # --- PING/PONG ---
             elif msg_type == 'ping':
                 logger.debug(f"Получен ping от {user_id}")
                 await websocket.send(json.dumps({'type': 'pong'}))
+            elif msg_type == 'pong':
+                logger.debug(f"Получен pong от {user_id}")
 
     except websockets.ConnectionClosed as e:
         logger.warning(f"Соединение закрыто: {e}")
